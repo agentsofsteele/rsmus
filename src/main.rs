@@ -19,7 +19,7 @@ fn main() {
     let termsize = termion::terminal_size().ok();
     let width = termsize.map(|(w, _)| w - 2).unwrap();
     let height = termsize.map(|(_, h)| h - 2).unwrap();
-    
+
     write!(
         stdout,
         "{}{}{}",
@@ -31,8 +31,7 @@ fn main() {
 
     panes::draw_box(&mut stdout, width, height, (1, 1));
 
-    let (mut artists, mut albums, mut songs) =
-        metadata::init();
+    let (mut artists, mut albums, mut songs) = metadata::init();
 
     let mut focused_pane = FocusedPane::Pane1;
 
@@ -87,7 +86,12 @@ fn move_left(focused_pane: &FocusedPane) -> FocusedPane {
     }
 }
 
-fn move_up(albums: &Vec<Album>, height: u16, focused_pane: &FocusedPane, root_pane: &mut Pane) {
+fn move_up(
+    albums: &Vec<Album>,
+    height: u16,
+    focused_pane: &FocusedPane,
+    root_pane: &mut Pane,
+) {
     match focused_pane {
         FocusedPane::Pane1 => {
             root_pane.move_up(albums, height);
@@ -101,14 +105,19 @@ fn move_up(albums: &Vec<Album>, height: u16, focused_pane: &FocusedPane, root_pa
         FocusedPane::Pane3 => {}
     }
 }
-fn move_down(albums: &Vec<Album>, height: u16, focused_pane: &FocusedPane, root_pane: &mut Pane) {
+fn move_down(
+    albums: &Vec<Album>,
+    height: u16,
+    focused_pane: &FocusedPane,
+    root_pane: &mut Pane,
+) {
     match focused_pane {
         FocusedPane::Pane1 => {
             root_pane.move_down(albums, height);
         }
-        FocusedPane::Pane2 => match root_pane.child_pane {
+        FocusedPane::Pane2 => {
             root_pane.move_child_down(albums, height);
-        },
+        }
         FocusedPane::Pane3 => {}
     }
 }

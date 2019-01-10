@@ -26,7 +26,11 @@ pub struct Pane {
     pub child_final: Option<AlbumView>,
 }
 impl Pane {
-    pub fn init_artist_pane(artists: &Vec<Artist>, albums: &Vec<Album>, height: u16) -> Pane {
+    pub fn init_artist_pane(
+        artists: &Vec<Artist>,
+        albums: &Vec<Album>,
+        height: u16,
+    ) -> Pane {
         let options: Vec<String> = artists
             .clone()
             .into_iter()
@@ -49,7 +53,11 @@ impl Pane {
         };
     }
 
-    fn init_artist_album_pane(artist: String, albums: &Vec<Album>, height: u16) -> Pane {
+    fn init_artist_album_pane(
+        artist: String,
+        albums: &Vec<Album>,
+        height: u16,
+    ) -> Pane {
         let options: Vec<String> = albums
             .clone()
             .into_iter()
@@ -73,7 +81,11 @@ impl Pane {
             }),
         };
     }
-    pub fn draw(&self, stdout: &mut RawTerminal<Stdout>, focused_pane: &FocusedPane) {
+    pub fn draw(
+        &self,
+        stdout: &mut RawTerminal<Stdout>,
+        focused_pane: &FocusedPane,
+    ) {
         self.draw_pane(stdout, focused_pane);
         match self.child_pane {
             Some(ref pane) => pane.draw_pane(stdout, focused_pane),
@@ -81,10 +93,15 @@ impl Pane {
         }
     }
 
-    fn draw_pane(&self, stdout: &mut RawTerminal<Stdout>, focused_pane: &FocusedPane) {
+    fn draw_pane(
+        &self,
+        stdout: &mut RawTerminal<Stdout>,
+        focused_pane: &FocusedPane,
+    ) {
         let mut shown_options: &[String] = &[];
         if self.options.len() > self.height as usize {
-            shown_options = &self.options[self.reference..(self.height as usize + self.reference)];
+            shown_options = &self.options
+                [self.reference..(self.height as usize + self.reference)];
         } else {
             shown_options = &self.options[..]
         }
@@ -102,7 +119,8 @@ impl Pane {
             while option.chars().count() + spacer.len() < self.width as usize {
                 spacer.push(' ');
             }
-            if self.cursor_pos as u16 == num && focused_pane == &self.pane_type {
+            if self.cursor_pos as u16 == num && focused_pane == &self.pane_type
+            {
                 write!(
                     stdout,
                     "{}{}{}{}{}{}{}{}",
@@ -131,7 +149,9 @@ impl Pane {
     }
 
     pub fn move_down(&mut self, albums: &Vec<Album>, height: u16) {
-        if (self.reference as i16) < (self.options.len() as i16 - self.height as i16) {
+        if (self.reference as i16)
+            < (self.options.len() as i16 - self.height as i16)
+        {
             if self.cursor_pos < self.height as usize - 1 {
                 self.cursor_pos += 1;
             } else {
@@ -197,7 +217,12 @@ impl AlbumView {
 }
 
 // Draw border for screen.
-pub fn draw_box(stdout: &mut RawTerminal<Stdout>, width: u16, height: u16, pos: (u16, u16)) {
+pub fn draw_box(
+    stdout: &mut RawTerminal<Stdout>,
+    width: u16,
+    height: u16,
+    pos: (u16, u16),
+) {
     write!(stdout, "{}", cursor::Goto(pos.0, pos.1)).unwrap();
     // Init border for top row.
     stdout.write(TOP_LEFT_CORNER.as_bytes()).unwrap();

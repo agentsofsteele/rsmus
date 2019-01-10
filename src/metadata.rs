@@ -14,8 +14,6 @@ use crate::panes;
 use bincode::{deserialize, serialize};
 
 pub fn init() -> (Vec<Artist>, Vec<Album>, Vec<Song>) {
-
-
     let mut data_path: PathBuf = dirs::config_dir().unwrap();
     data_path.push("rsmus/metadata.bin");
     if data_path.exists() {
@@ -100,7 +98,9 @@ fn get_file_metadata(entry: DirEntry) -> Song {
     };
 }
 
-fn metadata_from_binary(data_path: PathBuf) -> (Vec<Artist>, Vec<Album>, Vec<Song>) {
+fn metadata_from_binary(
+    data_path: PathBuf,
+) -> (Vec<Artist>, Vec<Album>, Vec<Song>) {
     // Open data file and read binary to objects.
     let mut data_file = File::open(data_path).unwrap();
     let mut buffer = Vec::new();
