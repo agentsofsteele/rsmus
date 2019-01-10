@@ -107,10 +107,7 @@ fn move_down(albums: &Vec<Album>, height: u16, focused_pane: &FocusedPane, root_
             root_pane.move_down(albums, height);
         }
         FocusedPane::Pane2 => match root_pane.child_pane {
-            Some(ref mut pane) => {
-                pane.move_down(albums, height);
-            }
-            None => {}
+            root_pane.move_child_down(albums, height);
         },
         FocusedPane::Pane3 => {}
     }

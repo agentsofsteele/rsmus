@@ -157,6 +157,13 @@ impl Pane {
         self.reset_child(albums, height);
     }
 
+    pub fn move_child_down(&self, albums: &Vec<Album>, height: u16) {
+        match self.child_pane {
+            Some(ref mut pane) => pane.move_down(albums, height),
+            None => {}
+        }
+    }
+
     pub fn get_selected(&self) -> String {
         return self.options[self.reference + self.cursor_pos].clone();
     }
