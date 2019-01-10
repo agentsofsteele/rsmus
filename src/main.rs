@@ -96,12 +96,9 @@ fn move_up(
         FocusedPane::Pane1 => {
             root_pane.move_up(albums, height);
         }
-        FocusedPane::Pane2 => match root_pane.child_pane {
-            Some(ref mut pane) => {
-                pane.move_up(albums, height);
-            }
-            None => {}
-        },
+        FocusedPane::Pane2 => {
+            root_pane.move_child_up(albums, height);
+        }
         FocusedPane::Pane3 => {}
     }
 }

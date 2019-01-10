@@ -125,7 +125,7 @@ fn init_library(file_data: Vec<Song>) -> (Vec<Artist>, Vec<Album>, Vec<Song>) {
 
     // TODO: Find a way to differentiate albums with same name while
     // preserving the display of split LPs in both artists' view.
-    // Probably by album release date
+    // Probably by album release date.
     for album in albums_list {
         let songs: Vec<Song> = file_data
             .clone()
