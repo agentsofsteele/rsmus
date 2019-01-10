@@ -1,0 +1,15 @@
+[package]
+name = "rsmus"
+version = "0.1.0"
+authors = ["sirtel"]
+edition = "2018"
+
+[dependencies]
+walkdir = "2.2.7"
+simplemad = "0.9"
+taglib = "1"
+serde_derive = "1.0"
+bincode = "1.0.1"
+serde = "1.0"
+dirs = "1.0"
+termion = "1"
