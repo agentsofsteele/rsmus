@@ -5,6 +5,7 @@ use std::io::{Stdout, Write};
 use termion::color;
 use termion::cursor;
 use termion::raw::RawTerminal;
+use termion::style::*;
 
 const HORZ_BOUNDARY: &'static str = "─";
 const VERT_BOUNDARY: &'static str = "│";
@@ -14,86 +15,214 @@ const TOP_RIGHT_CORNER: &'static str = "┐";
 const BOTTOM_LEFT_CORNER: &'static str = "└";
 const BOTTOM_RIGHT_CORNER: &'static str = "┘";
 
-pub struct Pane {
+#[derive(PartialEq)]
+enum PaneType {
+    MenuPane,
+    AlbumPane,
+}
+
+pub struct Pane<'a> {
     options: Vec<String>,
     reference: usize,
     height: u16,
     width: u16,
     cursor_pos: usize,
-    pane_pos: (u16, u16),
-    pane_type: FocusedPane,
-    pub child_pane: Option<Box<Pane>>,
-    pub child_final: Option<AlbumView>,
+    pos: (u16, u16),
+    focus: FocusedPane,
+    pane_type: PaneType,
+    pub child_pane: Option<Box<Pane<'a>>>,
+    album: Option<&'a Album>,
 }
-impl Pane {
+impl<'a> Pane<'a> {
     pub fn init_artist_pane(
         artists: &Vec<Artist>,
-        albums: &Vec<Album>,
-        height: u16,
-    ) -> Pane {
+        albums: &'a Vec<Album>,
+        size: (u16, u16),
+    ) -> Pane<'a> {
         let options: Vec<String> = artists
             .clone()
             .into_iter()
             .map(|artist| artist.name)
             .collect();
+        let height = size.1;
+        let width = size.0 / 5;
         return Pane {
             options: options.clone(),
             reference: 0 as usize,
             height: height,
-            width: 25,
+            width: width,
             cursor_pos: 0,
-            pane_pos: (1, 2),
-            pane_type: FocusedPane::Pane1,
-            child_final: None,
+            pos: (1, 2),
+            album: None,
+            focus: FocusedPane::Pane1,
+            pane_type: PaneType::MenuPane,
             child_pane: Some(Box::new(Pane::init_artist_album_pane(
-                options[0].clone(),
+                &options[0],
                 albums,
-                height,
+                size,
             ))),
         };
     }
 
     fn init_artist_album_pane(
-        artist: String,
-        albums: &Vec<Album>,
-        height: u16,
-    ) -> Pane {
+        artist: &str,
+        albums: &'a Vec<Album>,
+        size: (u16, u16),
+    ) -> Pane<'a> {
         let options: Vec<String> = albums
             .clone()
             .into_iter()
-            .filter(|album| album.artists.binary_search(&artist).is_ok())
+            .filter(|album| {
+                album.artists.binary_search(&artist.to_string()).is_ok()
+            })
             .map(|album| album.title)
             .collect();
+        let height = size.1;
+        let width = size.0 / 5;
+        let x = size.0 / 5 + 2;
         return Pane {
             options: options.clone(),
             reference: 0 as usize,
             height: height,
-            width: 25,
+            width: width,
             cursor_pos: 0,
-            pane_pos: (27, 2),
-            pane_type: FocusedPane::Pane2,
-            child_pane: None,
-            child_final: Some(AlbumView {
-                album: options[0].clone(),
-                pos: (52, 2),
-                pane_type: FocusedPane::Pane3,
-                cursor_pos: 0,
-            }),
+            pos: (x, 2),
+            album: None,
+            pane_type: PaneType::MenuPane,
+            focus: FocusedPane::Pane2,
+            child_pane: Some(Box::new(Pane::init_album_view_pane(
+                &options[0],
+                albums,
+                size,
+            ))),
         };
     }
+
+    fn init_album_view_pane(
+        album_title: &str,
+        albums: &'a Vec<Album>,
+        size: (u16, u16),
+    ) -> Pane<'a> {
+        let album: &Album = albums
+            .into_iter()
+            .find(|album| album.title == album_title)
+            .unwrap();
+        let options: Vec<String> = album
+            .clone()
+            .songs
+            .into_iter()
+            .map(|song| song.title)
+            .collect();
+        let height = size.1;
+        let width = size.0 - (size.0 / 5 * 2) - 1;
+        let x = (size.0 / 5) * 2 + 2;
+        return Pane {
+            options: options,
+            reference: 0 as usize,
+            height: height,
+            width: width,
+            cursor_pos: 0,
+            pos: (x, 2),
+            album: Some(album),
+            pane_type: PaneType::AlbumPane,
+            focus: FocusedPane::Pane3,
+            child_pane: None,
+        };
+    }
+
     pub fn draw(
-        &self,
+        &mut self,
         stdout: &mut RawTerminal<Stdout>,
         focused_pane: &FocusedPane,
+        size: (u16, u16),
     ) {
-        self.draw_pane(stdout, focused_pane);
+        match self.pane_type {
+            PaneType::MenuPane => {
+                self.height = size.1;
+                self.width = size.0 / 5;
+                self.draw_menu_pane(stdout, focused_pane);
+            }
+            PaneType::AlbumPane => {
+                self.height = size.1;
+                self.width = size.0 - (size.0 / 5 * 2) - 1;
+                self.draw_album_view_pane(stdout, focused_pane)
+            }
+        }
         match self.child_pane {
-            Some(ref pane) => pane.draw_pane(stdout, focused_pane),
+            Some(ref mut pane) => pane.draw(stdout, focused_pane, size),
             None => {}
         }
     }
 
-    fn draw_pane(
+    fn draw_album_view_pane(
+        &self,
+        stdout: &mut RawTerminal<Stdout>,
+        focused_pane: &FocusedPane,
+    ) {
+        let x = self.pos.0;
+        let mut y = self.pos.1;
+        draw_box(stdout, self.width, self.height, (x, y - 1));
+        let mut shown_options: &[String] = &[];
+        if self.options.len() > self.height as usize {
+            shown_options = &self.options
+                [self.reference..(self.height as usize + self.reference)];
+        } else {
+            shown_options = &self.options[..]
+        }
+
+        let mut title: &str = "";
+        let mut artists: &Vec<String> = &vec![];
+
+        write!(stdout, "{}", cursor::Goto(x, y));
+        match &self.album {
+            Some(ref album) => {
+                title = &album.title;
+                artists = &album.artists;
+            }
+            None => {}
+        }
+        y += 1;
+        write!(
+            stdout,
+            "{}{}{}{}",
+            VERT_BOUNDARY,
+            Bold,
+            title,
+            cursor::Goto(x, y)
+        );
+        write!(stdout, "{}{}", VERT_BOUNDARY, NoBold);
+        for artist in artists {
+            write!(stdout, "{} ", artist);
+        }
+
+        y += 1;
+        for num in 0..shown_options.len() {
+            let mut option = shown_options[num as usize].clone();
+
+            if option.chars().count() > self.width as usize - 4{
+                option.truncate(self.width as usize - 6);
+                option.push_str("..");
+            }
+
+            write!(stdout, "{}", cursor::Goto(x, y));
+            if self.cursor_pos == num && focused_pane == &self.focus {
+                write!(
+                    stdout,
+                    "{}    {}{}{}",
+                    VERT_BOUNDARY, Invert, option, NoInvert
+                );
+            } else {
+                write!(
+                    stdout,
+                    "{}    {}",
+                    VERT_BOUNDARY, option
+                );
+            }
+            y += 1;
+        }
+    }
+
+    fn draw_menu_pane(
         &self,
         stdout: &mut RawTerminal<Stdout>,
         focused_pane: &FocusedPane,
@@ -105,50 +234,49 @@ impl Pane {
         } else {
             shown_options = &self.options[..]
         }
-        write!(stdout, "{}", cursor::Goto(self.pane_pos.0, self.pane_pos.1));
+        draw_box(
+            stdout,
+            self.width,
+            self.height,
+            (self.pos.0, self.pos.1 - 1),
+        );
+        write!(stdout, "{}", cursor::Goto(self.pos.0, self.pos.1));
         for num in 0..self.height {
-            let mut spacer = std::string::String::new();
             let mut option = std::string::String::new();
             if shown_options.len() > num as usize {
                 option = shown_options[num as usize].clone();
             }
             if option.chars().count() > self.width as usize {
-                option.truncate(self.width as usize);
+                while option.chars().count() >= self.width as usize - 2 {
+                    option.pop();
+                }
                 option.push_str("..");
             }
-            while option.chars().count() + spacer.len() < self.width as usize {
-                spacer.push(' ');
-            }
-            if self.cursor_pos as u16 == num && focused_pane == &self.pane_type
-            {
+            if self.cursor_pos as u16 == num && focused_pane == &self.focus {
                 write!(
                     stdout,
-                    "{}{}{}{}{}{}{}{}",
+                    "{}{}{}{}{}",
                     VERT_BOUNDARY,
-                    color::Bg(color::White),
-                    color::Fg(color::Black),
+                    Invert,
                     option,
-                    spacer,
-                    color::Bg(color::Reset),
-                    color::Fg(color::Reset),
-                    cursor::Goto(self.pane_pos.0, (num + 3)),
+                    NoInvert,
+                    cursor::Goto(self.pos.0, (num + 3)),
                 )
                 .unwrap();
             } else {
                 write!(
                     stdout,
-                    "{}{}{}{}",
+                    "{}{}{}",
                     VERT_BOUNDARY,
                     option,
-                    spacer,
-                    termion::cursor::Goto(self.pane_pos.0, (num + 3))
+                    termion::cursor::Goto(self.pos.0, (num + 3))
                 )
                 .unwrap();
             }
         }
     }
 
-    pub fn move_down(&mut self, albums: &Vec<Album>, height: u16) {
+    pub fn move_down(&mut self, albums: &'a Vec<Album>, size: (u16, u16)) {
         if (self.reference as i16)
             < (self.options.len() as i16 - self.height as i16)
         {
@@ -162,9 +290,9 @@ impl Pane {
         {
             self.cursor_pos += 1;
         }
-        self.reset_child(albums, height);
+        self.reset_child(albums, size);
     }
-    pub fn move_up(&mut self, albums: &Vec<Album>, height: u16) {
+    pub fn move_up(&mut self, albums: &'a Vec<Album>, size: (u16, u16)) {
         if self.reference > 0 {
             if self.cursor_pos > 0 {
                 self.cursor_pos -= 1;
@@ -174,52 +302,64 @@ impl Pane {
         } else if self.cursor_pos > 0 {
             self.cursor_pos -= 1;
         }
-        self.reset_child(albums, height);
+        self.reset_child(albums, size);
     }
 
-    pub fn move_child_down(&mut self, albums: &Vec<Album>, height: u16) {
+    pub fn move_child_down(
+        &mut self,
+        albums: &'a Vec<Album>,
+        size: (u16, u16),
+    ) {
         match self.child_pane {
-            Some(ref mut pane) => pane.move_down(albums, height),
+            Some(ref mut pane) => pane.move_down(albums, size),
             None => {}
         }
     }
 
-    pub fn move_child_up(&mut self, albums: &Vec<Album>, height: u16) {
+    pub fn move_child_up(&mut self, albums: &'a Vec<Album>, size: (u16, u16)) {
         match self.child_pane {
-            Some(ref mut pane) => pane.move_up(albums, height),
+            Some(ref mut pane) => pane.move_up(albums, size),
             None => {}
         }
     }
 
-    pub fn get_selected(&self) -> String {
-        return self.options[self.reference + self.cursor_pos].clone();
-    }
-
-    pub fn reset_child(&mut self, albums: &Vec<Album>, height: u16) {
+    pub fn get_child_selected(&self) -> &str {
         match self.child_pane {
-            Some(ref p) => {
-                self.child_pane = Some(Box::new(Pane::init_artist_album_pane(
-                    self.get_selected(),
-                    albums,
-                    height,
-                )));
-            }
-            None => {}
+            Some(ref pane) => return pane.get_selected(),
+            None => return "error",
         }
     }
-}
 
-pub struct AlbumView {
-    album: String,
-    //songs: Vec<String>,
-    pos: (u16, u16),
-    pane_type: FocusedPane,
-    cursor_pos: usize,
-}
+    pub fn get_selected(&self) -> &str {
+        return &self.options[self.reference + self.cursor_pos];
+    }
 
-impl AlbumView {
-    pub fn draw(&self, stdout: &mut RawTerminal<Stdout>) {
-        write!(stdout, "{}", cursor::Goto(self.pos.0, self.pos.1));
+    pub fn reset_child<'b>(
+        &mut self,
+        albums: &'a Vec<Album>,
+        size: (u16, u16),
+    ) {
+        match self.child_pane {
+            Some(ref p) => match p.pane_type {
+                PaneType::MenuPane => {
+                    self.child_pane =
+                        Some(Box::new(Pane::init_artist_album_pane(
+                            self.get_selected(),
+                            albums,
+                            size,
+                        )));
+                }
+                PaneType::AlbumPane => {
+                    self.child_pane =
+                        Some(Box::new(Pane::init_album_view_pane(
+                            self.get_selected(),
+                            albums,
+                            size,
+                        )));
+                }
+            },
+            None => {}
+        }
     }
 }
 
@@ -230,24 +370,29 @@ pub fn draw_box(
     height: u16,
     pos: (u16, u16),
 ) {
-    write!(stdout, "{}", cursor::Goto(pos.0, pos.1)).unwrap();
+    let x = pos.0;
+    let mut y = pos.1;
+    write!(stdout, "{}", cursor::Goto(x, y)).unwrap();
     // Init border for top row.
     stdout.write(TOP_LEFT_CORNER.as_bytes()).unwrap();
     for _ in 0..width {
         stdout.write(HORZ_BOUNDARY.as_bytes()).unwrap();
     }
     stdout.write(TOP_RIGHT_CORNER.as_bytes()).unwrap();
-    stdout.write(b"\n\r").unwrap();
+
+    y += 1;
+    write!(stdout, "{}", cursor::Goto(x, y));
 
     // Init border for middle cells.
-    for _ in 0..(height) {
+    for _ in 0..height {
         stdout.write(VERT_BOUNDARY.as_bytes()).unwrap();
 
         for _ in 0..width {
             stdout.write(b" ").unwrap();
         }
         stdout.write(VERT_BOUNDARY.as_bytes()).unwrap();
-        stdout.write(b"\n\r").unwrap();
+        y += 1;
+        write!(stdout, "{}", cursor::Goto(x, y));
     }
 
     // init border for bottom row
@@ -256,4 +401,19 @@ pub fn draw_box(
         stdout.write(HORZ_BOUNDARY.as_bytes()).unwrap();
     }
     stdout.write(BOTTOM_RIGHT_CORNER.as_bytes()).unwrap();
+}
+
+pub fn clear_area(
+    stdout: &mut RawTerminal<Stdout>,
+    width: u16,
+    height: u16,
+    pos: (u16, u16),
+) {
+    write!(stdout, "{}", cursor::Goto(pos.0, pos.1)).unwrap();
+    for y in 0..height {
+        for x in 0..width {
+            write!(stdout, " ");
+        }
+        write!(stdout, "{}", cursor::Goto(pos.0, pos.1 + y)).unwrap();
+    }
 }
