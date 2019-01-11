@@ -138,6 +138,7 @@ fn init_library(file_data: Vec<Song>) -> (Vec<Artist>, Vec<Album>, Vec<Song>) {
             .map(|song| song.artist.clone())
             .collect();
         artists.sort();
+        artists.dedup();
         albums.push(Album {
             artists: artists,
             songs: songs,
