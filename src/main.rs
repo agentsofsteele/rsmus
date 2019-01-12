@@ -1,5 +1,7 @@
 use std::fs::File;
 use std::io::{stdin, stdout, BufReader, Write};
+use std::thread::sleep;
+use std::time::Duration;
 
 use termion::input::TermRead;
 use termion::raw::IntoRawMode;
@@ -13,6 +15,8 @@ use crate::panes::Pane;
 
 pub mod metadata;
 use crate::metadata::{Album, Artist, Song};
+
+pub mod config;
 
 #[macro_use]
 extern crate serde_derive;
@@ -37,7 +41,9 @@ fn main() {
     )
     .unwrap();
 
-    let (mut artists, mut albums, mut songs) = metadata::init();
+    let mut songs = metadata::init_songs();
+    let mut albums = metadata::init_albums(&songs);
+    let mut artists = metadata::init_artists(&songs, &albums);
 
     let mut focused_pane = FocusedPane::Pane1;
 
@@ -52,30 +58,32 @@ fn main() {
     let mut stdin = stdin.keys();
     loop {
         size = refresh_size();
-        let event = stdin.next().unwrap().unwrap();
+        let event = stdin.next();
         use termion::event::Key::*;
-        match event {
-            Char('k') | Up => {
-                move_up(&albums, size, &focused_pane, &mut artist_pane);
-                artist_pane.draw(&mut stdout, &focused_pane, size);
+        if let Some(Ok(key)) = event {
+            match key {
+                Char('k') | Up => {
+                    move_up(&albums, size, &focused_pane, &mut artist_pane);
+                    artist_pane.draw(&mut stdout, &focused_pane, size);
+                }
+                Char('j') | Down => {
+                    move_down(&albums, size, &focused_pane, &mut artist_pane);
+                    artist_pane.draw(&mut stdout, &focused_pane, size);
+                }
+                Char('l') | Right => {
+                    focused_pane = move_right(&focused_pane);
+                    artist_pane.draw(&mut stdout, &focused_pane, size);
+                }
+                Char('h') | Left => {
+                    focused_pane = move_left(&focused_pane);
+                    artist_pane.draw(&mut stdout, &focused_pane, size);
+                }
+                Char('\n') | Char(' ') => {
+                    play_song(&focused_pane, &artist_pane, &songs, &sink);
+                }
+                Char('q') => return (),
+                _ => {}
             }
-            Char('j') | Down => {
-                move_down(&albums, size, &focused_pane, &mut artist_pane);
-                artist_pane.draw(&mut stdout, &focused_pane, size);
-            }
-            Char('l') | Right => {
-                focused_pane = move_right(&focused_pane);
-                artist_pane.draw(&mut stdout, &focused_pane, size)
-            }
-            Char('h') | Left => {
-                focused_pane = move_left(&focused_pane);
-                artist_pane.draw(&mut stdout, &focused_pane, size)
-            }
-            Char('\n') | Char(' ') => {
-                play_song(&focused_pane, &artist_pane, &songs, &sink);
-            }
-            Char('q') => return (),
-            _ => {}
         }
         stdout.flush().unwrap();
     }

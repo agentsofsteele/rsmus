@@ -10,10 +10,11 @@ use walkdir::WalkDir;
 
 use termion::raw::RawTerminal;
 
+use crate::config;
 use crate::panes;
 use bincode::{deserialize, serialize};
 
-pub fn init() -> (Vec<Artist>, Vec<Album>, Vec<Song>) {
+pub fn init_songs() -> Vec<Song> {
     let mut data_path: PathBuf = dirs::config_dir().unwrap();
     data_path.push("rsmus/metadata.bin");
     if data_path.exists() {
@@ -23,10 +24,21 @@ pub fn init() -> (Vec<Artist>, Vec<Album>, Vec<Song>) {
     }
 }
 
-fn scan_library_dir() -> (Vec<Artist>, Vec<Album>, Vec<Song>) {
+fn scan_library_dir() -> Vec<Song> {
     // Walk through music dir recursively, getting metadata.
+    let config = config::Config::from_config_file();
     let mut file_data = Vec::new();
-    let entries: Vec<DirEntry> = WalkDir::new("/home/sirtel/Music")
+    let mut music_path = PathBuf::new();
+    let music_path_str = &config.music_dir;
+    if music_path_str.starts_with("~/") {
+        music_path = dirs::home_dir().unwrap();
+        let x: &[_] = &['~', '/'];
+        music_path.push(music_path_str.trim_start_matches(x));
+    } else {
+        music_path.push(music_path_str);
+    }
+
+    let entries: Vec<DirEntry> = WalkDir::new(music_path)
         .into_iter()
         .map(|a| a.unwrap())
         .collect();
@@ -65,7 +77,7 @@ fn scan_library_dir() -> (Vec<Artist>, Vec<Album>, Vec<Song>) {
     metadata.write_all(&data).unwrap();
 
     //run library_init to init program
-    return init_library(file_data);
+    return file_data;
 }
 
 // Recieves a chunk of files and gets metadata for each valid file type
@@ -73,7 +85,7 @@ fn thread_closure(entries: Vec<DirEntry>) -> Vec<Song> {
     let mut file_data = Vec::new();
     for entry in entries {
         let path = entry.path().to_str().unwrap();
-        if path.ends_with("flac") {
+        if path.ends_with(".flac") {
             file_data.push(get_file_metadata(entry));
         } else if path.ends_with(".mp3") {
             file_data.push(get_file_metadata(entry));
@@ -95,12 +107,13 @@ fn get_file_metadata(entry: DirEntry) -> Song {
         title: meta.title().unwrap_or("Unknown".to_string()),
         path: entry.path().to_str().unwrap().to_string(),
         duration: Some(Duration::new(duration as u64, 0)),
+        year: meta.year().unwrap_or(0),
+        track: meta.track().unwrap_or(0),
+        genre: meta.genre().unwrap_or("Unknown".to_string()),
     };
 }
 
-fn metadata_from_binary(
-    data_path: PathBuf,
-) -> (Vec<Artist>, Vec<Album>, Vec<Song>) {
+fn metadata_from_binary(data_path: PathBuf) -> Vec<Song> {
     // Open data file and read binary to objects.
     let mut data_file = File::open(data_path).unwrap();
     let mut buffer = Vec::new();
@@ -108,14 +121,14 @@ fn metadata_from_binary(
 
     // Create song objects with data.
     let songs: Vec<Song> = deserialize(&buffer[..]).unwrap();
-    return init_library(songs);
+    return songs;
 }
 
-fn init_library(file_data: Vec<Song>) -> (Vec<Artist>, Vec<Album>, Vec<Song>) {
+pub fn init_albums(file_data: &Vec<Song>) -> Vec<Album> {
     // Get list of alphabetically sorted unique albums in library.
     let mut albums_list = Vec::new();
     for song in file_data.iter() {
-        albums_list.push(song.album.clone());
+        albums_list.push(&song.album);
     }
     albums_list.sort();
     albums_list.dedup();
@@ -127,16 +140,12 @@ fn init_library(file_data: Vec<Song>) -> (Vec<Artist>, Vec<Album>, Vec<Song>) {
     // preserving the display of split LPs in both artists' view.
     // Probably by album release date.
     for album in albums_list {
-        let songs: Vec<Song> = file_data
-            .clone()
-            .into_iter()
-            .filter(|song| song.album == album)
-            .collect();
-        let mut artists: Vec<String> = songs
-            .clone()
+        let songs: Vec<&Song> = file_data
             .iter()
-            .map(|song| song.artist.clone())
+            .filter(|song| &song.album == album)
             .collect();
+        let mut artists: Vec<&str> =
+            songs.iter().map(|song| song.artist.as_ref()).collect();
         artists.sort();
         artists.dedup();
         albums.push(Album {
@@ -145,11 +154,17 @@ fn init_library(file_data: Vec<Song>) -> (Vec<Artist>, Vec<Album>, Vec<Song>) {
             title: album,
         });
     }
+    return albums;
+}
 
+pub fn init_artists<'a>(
+    songs: &'a Vec<Song>,
+    albums: &'a Vec<Album>,
+) -> Vec<Artist<'a>> {
     //create alphabetically sorted list of unique artists
     let mut artists_list = Vec::new();
-    for song in file_data.iter() {
-        artists_list.push(song.artist.clone())
+    for song in songs.iter() {
+        artists_list.push(&song.artist)
     }
     artists_list.sort();
     artists_list.dedup();
@@ -158,17 +173,18 @@ fn init_library(file_data: Vec<Song>) -> (Vec<Artist>, Vec<Album>, Vec<Song>) {
     let mut artists = Vec::new();
 
     for artist in artists_list {
-        let albums: Vec<Album> = albums
-            .clone()
-            .into_iter()
-            .filter(|album| album.artists.binary_search(&artist).is_ok())
+        let albums: Vec<&Album> = albums
+            .iter()
+            .filter(|album| {
+                album.artists.binary_search(&&artist.as_ref()).is_ok()
+            })
             .collect();
         artists.push(Artist {
             albums: albums,
             name: artist,
         });
     }
-    return (artists, albums, file_data);
+    return artists;
 }
 #[derive(Clone, Serialize, Deserialize)]
 pub struct Song {
@@ -177,16 +193,19 @@ pub struct Song {
     pub title: String,
     pub path: String,
     pub duration: Option<std::time::Duration>,
+    pub track: u32,
+    pub year: u32,
+    pub genre: String,
 }
 
 #[derive(Clone)]
-pub struct Album {
-    pub songs: Vec<Song>,
-    pub artists: Vec<String>,
-    pub title: String,
+pub struct Album<'a> {
+    pub songs: Vec<&'a Song>,
+    pub artists: Vec<&'a str>,
+    pub title: &'a str,
 }
 #[derive(Clone)]
-pub struct Artist {
-    pub albums: Vec<Album>,
-    pub name: String,
+pub struct Artist<'a> {
+    pub albums: Vec<&'a Album<'a>>,
+    pub name: &'a str,
 }

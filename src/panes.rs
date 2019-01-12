@@ -22,7 +22,7 @@ enum PaneType {
 }
 
 pub struct Pane<'a> {
-    options: Vec<String>,
+    options: Vec<&'a str>,
     reference: usize,
     height: u16,
     width: u16,
@@ -31,23 +31,19 @@ pub struct Pane<'a> {
     focus: FocusedPane,
     pane_type: PaneType,
     pub child_pane: Option<Box<Pane<'a>>>,
-    album: Option<&'a Album>,
+    album: Option<&'a Album<'a>>,
 }
 impl<'a> Pane<'a> {
     pub fn init_artist_pane(
-        artists: &Vec<Artist>,
+        artists: &'a Vec<Artist>,
         albums: &'a Vec<Album>,
         size: (u16, u16),
     ) -> Pane<'a> {
-        let options: Vec<String> = artists
-            .clone()
-            .into_iter()
-            .map(|artist| artist.name)
-            .collect();
+        let options: Vec<&str> =
+            artists.iter().map(|artist| artist.name).collect();
         let height = size.1;
         let width = size.0 / 5;
         return Pane {
-            options: options.clone(),
             reference: 0 as usize,
             height: height,
             width: width,
@@ -61,6 +57,7 @@ impl<'a> Pane<'a> {
                 albums,
                 size,
             ))),
+            options: options,
         };
     }
 
@@ -69,12 +66,9 @@ impl<'a> Pane<'a> {
         albums: &'a Vec<Album>,
         size: (u16, u16),
     ) -> Pane<'a> {
-        let options: Vec<String> = albums
-            .clone()
-            .into_iter()
-            .filter(|album| {
-                album.artists.binary_search(&artist.to_string()).is_ok()
-            })
+        let options: Vec<&str> = albums
+            .iter()
+            .filter(|album| album.artists.binary_search(&artist).is_ok())
             .map(|album| album.title)
             .collect();
         let height = size.1;
@@ -107,12 +101,8 @@ impl<'a> Pane<'a> {
             .into_iter()
             .find(|album| album.title == album_title)
             .unwrap();
-        let options: Vec<String> = album
-            .clone()
-            .songs
-            .into_iter()
-            .map(|song| song.title)
-            .collect();
+        let options: Vec<&str> =
+            album.songs.iter().map(|song| song.title.as_ref()).collect();
         let height = size.1;
         let width = size.0 - (size.0 / 5 * 2) - 1;
         let x = (size.0 / 5) * 2 + 2;
@@ -162,7 +152,7 @@ impl<'a> Pane<'a> {
         let x = self.pos.0;
         let mut y = self.pos.1;
         draw_box(stdout, self.width, self.height, (x, y - 1));
-        let mut shown_options: &[String] = &[];
+        let mut shown_options: &[&str] = &[];
         if self.options.len() > self.height as usize {
             shown_options = &self.options
                 [self.reference..(self.height as usize + self.reference)];
@@ -171,7 +161,7 @@ impl<'a> Pane<'a> {
         }
 
         let mut title: &str = "";
-        let mut artists: &Vec<String> = &vec![];
+        let mut artists: &Vec<&str> = &vec![];
 
         write!(stdout, "{}", cursor::Goto(x, y));
         match &self.album {
@@ -197,9 +187,9 @@ impl<'a> Pane<'a> {
 
         y += 1;
         for num in 0..shown_options.len() {
-            let mut option = shown_options[num as usize].clone();
+            let mut option = shown_options[num as usize].to_string();
 
-            if option.chars().count() > self.width as usize - 4{
+            if option.chars().count() > self.width as usize - 4 {
                 option.truncate(self.width as usize - 6);
                 option.push_str("..");
             }
@@ -212,11 +202,7 @@ impl<'a> Pane<'a> {
                     VERT_BOUNDARY, Invert, option, NoInvert
                 );
             } else {
-                write!(
-                    stdout,
-                    "{}    {}",
-                    VERT_BOUNDARY, option
-                );
+                write!(stdout, "{}    {}", VERT_BOUNDARY, option);
             }
             y += 1;
         }
@@ -227,7 +213,7 @@ impl<'a> Pane<'a> {
         stdout: &mut RawTerminal<Stdout>,
         focused_pane: &FocusedPane,
     ) {
-        let mut shown_options: &[String] = &[];
+        let mut shown_options: &[&str] = &[];
         if self.options.len() > self.height as usize {
             shown_options = &self.options
                 [self.reference..(self.height as usize + self.reference)];
@@ -244,7 +230,7 @@ impl<'a> Pane<'a> {
         for num in 0..self.height {
             let mut option = std::string::String::new();
             if shown_options.len() > num as usize {
-                option = shown_options[num as usize].clone();
+                option = shown_options[num as usize].to_string();
             }
             if option.chars().count() > self.width as usize {
                 while option.chars().count() >= self.width as usize - 2 {
